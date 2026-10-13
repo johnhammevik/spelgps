@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#38291e">
 <meta name="description" content="Frontier GPS: westerninspirerad navigationsprototyp med live-GPS, rund minimap och rutter i Sverige.">
-<title>Frontier GPS | Westernkarta</title>
+<title>Frontier GPS 3.2 | Westernkarta</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
 <style>
 :root{--ink:#32251b;--dark:#35271e;--rust:#9b3025;--gold:#ba8b4a;--cream:#f6e6bc;--paper:#e9d3a5;--muted:#745639;--panel-height:370px}
@@ -37,6 +37,24 @@ button,input{font:inherit}button{cursor:pointer;touch-action:manipulation}button
 .player-dot{width:34px;height:34px;filter:drop-shadow(0 2px 3px #24170e99);pointer-events:none}.player-dot svg{width:34px;height:34px}.mini-map .player-dot{width:25px;height:25px}.mini-map .player-dot svg{width:25px;height:25px}
 .goal-dot{height:38px;width:38px;display:grid;place-items:center;filter:drop-shadow(0 2px 2px #21181180);cursor:pointer}.goal-dot svg{width:38px;height:38px}
 .poi-dot{border:2px solid #3b2b1d;background:#e9d3a6;color:#33251a;box-shadow:2px 2px 0 #3b2a1b60;min-width:30px;height:30px;display:grid;place-items:center;border-radius:50%;font-size:16px;cursor:pointer}.poi-dot.fuel{background:#8f392b;color:#ffe5c4}.poi-dot.repair{background:#46574a;color:#fff1ce}.poi-dot.sight{background:#d2b16c;color:#473220}
+
+/* Kapitel II: en westerninspirerad skylt med nästa sväng. */
+.turn-banner{position:fixed;z-index:13;top:calc(105px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(420px,calc(100vw - 280px));min-height:76px;display:flex;align-items:center;gap:12px;padding:10px 14px;background:linear-gradient(145deg,#f6e5bd,#dac093);border:3px double #654629;outline:2px solid #302116;box-shadow:3px 5px 0 #2e1d15a8;color:#3c291b;pointer-events:none}
+.turn-banner[hidden]{display:none}
+.turn-banner .turn-symbol{width:51px;flex-shrink:0;text-align:center;font:bold 46px/1 Georgia,serif;color:#91392c}
+.turn-banner .turn-copy{min-width:0;flex:1}
+.turn-banner .turn-heading{font:900 10px system-ui,sans-serif;letter-spacing:.11em;text-transform:uppercase;color:#85502e}
+.turn-banner .turn-distance{font:bold 22px/1.15 Georgia,serif;margin:2px 0}
+.turn-banner .turn-road{font:12px/1.25 Georgia,serif;white-space:normal;overflow-wrap:anywhere}
+@media(max-width:650px){
+ .turn-banner{top:calc(161px + env(safe-area-inset-top));left:10px;right:10px;transform:none;width:auto;min-height:68px;padding:7px 11px;gap:10px}
+ .turn-banner .turn-symbol{width:37px;font-size:37px}
+ .turn-banner .turn-distance{font-size:19px}
+ .turn-banner .turn-heading{font-size:9px}
+ .turn-banner .turn-road{font-size:11px}
+ body.focus .turn-banner{top:calc(95px + env(safe-area-inset-top))}
+}
+
 /* Focus mode retains a way back; the browser fullscreen API is optional on iOS. */
 body.focus .card{transform:translateY(125%);opacity:0;pointer-events:none}body.focus .masthead{display:none}body.focus .mini-outer{width:216px;height:236px}body.focus .mini-ring{width:205px;height:205px}body.focus .mini-caption{margin-top:8px}body.focus .toolbelt{top:calc(25px + env(safe-area-inset-top))}body.focus .compass{top:calc(25px + env(safe-area-inset-top))}
 @media(max-width:650px){
@@ -61,6 +79,15 @@ body.focus .card{transform:translateY(125%);opacity:0;pointer-events:none}body.f
  <button class="tool" id="followBtn" aria-pressed="false" type="button">◎ Följ mig</button>
  <button class="tool small" id="focusBtn" aria-pressed="false" type="button">⤢ Stor karta</button>
 </div>
+<aside class="turn-banner" id="turnBanner" aria-label="Nästa sväng" hidden>
+ <div class="turn-symbol" id="turnSymbol" aria-hidden="true">↑</div>
+ <div class="turn-copy">
+  <div class="turn-heading" id="turnHeading">NÄSTA SVÄNG</div>
+  <div class="turn-distance" id="turnDistance">—</div>
+  <div class="turn-road" id="turnRoad">Välj en destination för att börja.</div>
+ </div>
+</aside>
+
 <section class="mini-outer" aria-label="Rund minimap"><div class="mini-ring"><div id="minimap" class="mini-map"></div></div><span class="mini-caption">✦ MINI-KARTA ✦</span></section>
 <main class="card" id="panel">
  <div class="eyebrow">KAPITEL I · NYA VÄGAR</div><h2>Reseplaneraren</h2><div class="rules" aria-hidden="true">✦</div>
@@ -93,8 +120,10 @@ let following=false, demoTimer=null, demoIndex=0, gpsWatch=null, gpsSession=0, h
 let routeRequest=0, currentRoute=null, marker=null, miniMarker=null, targetMarker=null;
 let poiMarkers=[], searchController=null, lastSearchAt=0, lastPOIAt=0;
 let panelHeight=370;
-let offRouteCount = 0;
-let lastRerouteAt = 0;
+// Ruttdetaljer för nästa-sväng-panelen. Inga extra anrop görs vid GPS-uppdateringar.
+let routeDistances=[];
+let turns=[];
+let lastProgress=0;
 const emptyGeo = () => ({type:'FeatureCollection',features:[]});
 const lineGeo = coords => ({type:'FeatureCollection',features:[{type:'Feature',properties:{},geometry:{type:'LineString',coordinates:coords}}]});
 const isNumber = v => typeof v==='number' && Number.isFinite(v);
@@ -131,6 +160,7 @@ function addRouteLayers(){
 }
 function routeDraw(coords){
  currentRoute=coords;
+ if(!coords?.length){clearTurnNavigation();}
  const source=map?.getSource('frontier-route');
  if(source) source.setData(coords?.length>=2?lineGeo(coords):emptyGeo());
 }
@@ -191,74 +221,96 @@ function rad(d){return d*Math.PI/180;}
 function degrees(r){return r*180/Math.PI;}
 function bearingOf(a,b){const d=rad(b.lng-a.lng),l1=rad(a.lat),l2=rad(b.lat);return (degrees(Math.atan2(Math.sin(d)*Math.cos(l2),Math.cos(l1)*Math.sin(l2)-Math.sin(l1)*Math.cos(l2)*Math.cos(d)))+360)%360;}
 function metres(a,b){const dLat=rad(b.lat-a.lat),dLon=rad(b.lng-a.lng);const x=Math.sin(dLat/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLon/2)**2;return 12742000*Math.asin(Math.min(1,Math.sqrt(x)));}
-function distanceToRoute(pos, coords) {
-  const latScale = 111320;
-  const lonScale = latScale * Math.cos(rad(pos.lat));
 
-  let shortest = Infinity;
-
-  for (let i = 1; i < coords.length; i++) {
-    const a = coords[i - 1];
-    const b = coords[i];
-
-    const x1 = (a[0] - pos.lng) * lonScale;
-    const y1 = (a[1] - pos.lat) * latScale;
-    const x2 = (b[0] - pos.lng) * lonScale;
-    const y2 = (b[1] - pos.lat) * latScale;
-
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const lengthSq = dx * dx + dy * dy;
-
-    const t = lengthSq === 0 ? 0 :
-      Math.max(0, Math.min(1,
-        -(x1 * dx + y1 * dy) / lengthSq
-      ));
-
-    shortest = Math.min(
-      shortest,
-      Math.hypot(x1 + t * dx, y1 + t * dy)
-    );
-  }
-
-  return shortest;
+// OSRM levererar koordinater i ordningen [longitud, latitud].
+function clearTurnNavigation(){
+ turns=[];routeDistances=[];lastProgress=0;
+ $('turnBanner').hidden=true;
+}
+function routePoint(pair){return {lng:pair[0],lat:pair[1]};}
+function buildRouteDistances(){
+ routeDistances=[0];
+ if(!currentRoute)return;
+ for(let i=1;i<currentRoute.length;i++){
+   routeDistances.push(routeDistances[i-1]+metres(routePoint(currentRoute[i-1]),routePoint(currentRoute[i])));
+ }
+}
+// Hitta den närmaste punkten på bilrutten, inte bara fågelvägen till en sväng.
+function findRouteProgress(location){
+ if(!currentRoute || currentRoute.length<2)return null;
+ const unitLat=111320,unitLng=unitLat*Math.cos(rad(location.lat));
+ let nearest=null;
+ for(let i=0;i<currentRoute.length-1;i++){
+   const a=currentRoute[i],b=currentRoute[i+1];
+   const ax=(a[0]-location.lng)*unitLng,ay=(a[1]-location.lat)*unitLat;
+   const dx=(b[0]-a[0])*unitLng,dy=(b[1]-a[1])*unitLat;
+   const sq=dx*dx+dy*dy;
+   const t=sq===0?0:Math.max(0,Math.min(1,-(ax*dx+ay*dy)/sq));
+   const distance=Math.hypot(ax+t*dx,ay+t*dy);
+   const progress=routeDistances[i]+t*(routeDistances[i+1]-routeDistances[i]);
+   // Vid korsande vägsegment föredras en punkt nära tidigare ruttläge.
+   const penalty=lastProgress>0 && progress<lastProgress-80?30:0;
+   const score=distance+penalty;
+   if(!nearest || score<nearest.score)nearest={score,distance,progress};
+ }
+ return nearest;
+}
+function formatTurnDistance(m){
+ if(m<30)return 'Nu';
+ if(m<1000)return `${Math.ceil(m/10)*10} m`;
+ return `${(m/1000).toFixed(1).replace('.',',')} km`;
+}
+function explainManeuver(turn){
+ const type=turn.type||'',modifier=turn.modifier||'';
+ if(type==='arrive')return {symbol:'⚑',text:'Framme vid målet'};
+ if(type==='roundabout' || type==='rotary' || type==='roundabout turn' || type==='exit roundabout' || type==='exit rotary')return {symbol:'⟳',text:'Kör genom rondellen'};
+ if(type==='merge')return {symbol:'↗',text:'Kör in på vägen'};
+ if(type==='on ramp')return {symbol:'↗',text:'Ta påfarten'};
+ if(type==='off ramp')return {symbol:'↗',text:'Ta avfarten'};
+ if(modifier.includes('left'))return {symbol:modifier.startsWith('slight')?'↖':'↰',text:type==='fork'?'Håll vänster':'Sväng vänster'};
+ if(modifier.includes('right'))return {symbol:modifier.startsWith('slight')?'↗':'↱',text:type==='fork'?'Håll höger':'Sväng höger'};
+ if(modifier==='uturn')return {symbol:'↶',text:'Gör en U-sväng'};
+ return {symbol:'↑',text:'Fortsätt rakt fram'};
+}
+function initTurnNavigation(route){
+ clearTurnNavigation();
+ buildRouteDistances();
+ const steps=(route.legs||[]).flatMap(leg=>leg.steps||[]);
+ for(const step of steps){
+   const maneuver=step.maneuver||{},pair=maneuver.location;
+   if(!Array.isArray(pair) || pair.length<2 || maneuver.type==='depart')continue;
+   if(!Number.isFinite(pair[0]) || !Number.isFinite(pair[1]))continue;
+   const at=findRouteProgress(routePoint(pair));
+   if(at)turns.push({progress:at.progress,type:maneuver.type||'',modifier:maneuver.modifier||'',road:step.name||step.ref||''});
+ }
+ turns.sort((a,b)=>a.progress-b.progress);
+ updateTurnBanner();
+}
+function updateTurnBanner(){
+ const banner=$('turnBanner');
+ if(!current || !turns.length || !routeDistances.length){banner.hidden=true;return;}
+ const at=findRouteProgress(current);
+ if(!at){banner.hidden=true;return;}
+ banner.hidden=false;
+ const distanceLimit=Math.max(75,Math.min(160,(isNumber(current.accuracy)?current.accuracy:0)*2));
+ if(at.distance>distanceLimit){
+   $('turnSymbol').textContent='↻';
+   $('turnHeading').textContent='UTANFÖR RUTTEN';
+   $('turnDistance').textContent='Räkna om rutten';
+   $('turnRoad').textContent='Tryck på ”Beräkna rutt” när det är säkert.';
+   return;
+ }
+ // Låt svängen ligga kvar i panelen till 12 meter efter korsningen.
+ const next=turns.find(turn=>turn.progress>=at.progress-12) || turns[turns.length-1];
+ const difference=Math.max(0,next.progress-at.progress);
+ const instruction=explainManeuver(next);
+ $('turnSymbol').textContent=instruction.symbol;
+ $('turnHeading').textContent=instruction.text;
+ $('turnDistance').textContent=next.type==='arrive'&&difference<30?'Snart framme':formatTurnDistance(difference);
+ $('turnRoad').textContent=next.road?`Väg: ${next.road}`:'Följ den markerade rutten';
+ lastProgress=Math.max(lastProgress,at.progress);
 }
 
-function checkForDetour(accuracy) {
-  if (
-    !destination ||
-    !current ||
-    !currentRoute ||
-    currentRoute.length < 2 ||
-    !isNumber(accuracy) ||
-    accuracy > 35
-  ) {
-    offRouteCount = 0;
-    return;
-  }
-
-  const distance = distanceToRoute(
-    current, currentRoute
-  );
-
-  if (distance > Math.max(75, accuracy * 2)) {
-    offRouteCount++;
-  } else {
-    offRouteCount = 0;
-  }
-
-  // Kräv tre GPS-mätningar och minst
-  // 90 sekunder mellan omräkningarna.
-  if (
-    offRouteCount < 3 ||
-    Date.now() - lastRerouteAt < 90000
-  ) return;
-
-  offRouteCount = 0;
-  lastRerouteAt = Date.now();
-
-  calculateRoute();
-}
 function smoothedAngle(oldAngle,nextAngle){const delta=((nextAngle-oldAngle+540)%360)-180;return (oldAngle+delta*.48+360)%360;}
 function onPosition({lat,lng,accuracy=null,speed=null,course=null,timestamp=Date.now(),demo=false}){
  if(!isNumber(lat)||!isNumber(lng))return;
@@ -275,17 +327,12 @@ function onPosition({lat,lng,accuracy=null,speed=null,course=null,timestamp=Date
  els.accuracy.textContent=demo?'DEMO':isNumber(accuracy)?`${Math.round(accuracy)} m`:'—';
  els.gpsState.textContent=demo?'● SIMULERING':'● GPS AKTIV';
  els.routeBtn.disabled=!destination;
- positionMarkers([lng,lat]);
-camera(false);
-
-if (!demo) {
-  checkForDetour(accuracy);
-  }
+ positionMarkers([lng,lat]);camera(false);
+ updateTurnBanner();
 }
-
 function clearGps(){gpsSession++;if(gpsWatch!==null&&navigator.geolocation)navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;els.stopBtn.style.display='none';els.gpsBtn.textContent='◎ Starta GPS';}
 function stopDemo(){if(demoTimer!==null)clearInterval(demoTimer);demoTimer=null;els.demoBtn.textContent='▶ Testkör';}
-function removeLivePosition(){current=null;previous=null;hasHeading=false;heading=0;following=false;hasFix=false;followUI();els.gpsState.textContent='GPS AV';els.speed.textContent='—';els.accuracy.textContent='—';if(marker){marker.remove();marker=null;}if(miniMarker){miniMarker.remove();miniMarker=null;}els.routeBtn.disabled=true;}
+function removeLivePosition(){current=null;previous=null;hasHeading=false;heading=0;following=false;hasFix=false;followUI();els.gpsState.textContent='GPS AV';els.speed.textContent='—';els.accuracy.textContent='—';if(marker){marker.remove();marker=null;}if(miniMarker){miniMarker.remove();miniMarker=null;}els.routeBtn.disabled=true;updateTurnBanner();}
 function startGPS(){
  if(!navigator.geolocation){say('Den här webbläsaren stöder inte platsåtkomst. Använd Safari eller Chrome.');return;}
  if(!window.isSecureContext){say('Live-GPS kräver HTTPS. Publicera filen med GitHub Pages och öppna adressen på telefonen.');return;}
@@ -343,7 +390,7 @@ async function calculateRoute(){
  const rid=++routeRequest;
  els.routeBtn.disabled=true;say('Beräknar bilrutt via OSRM …');
  const start=[current.lng,current.lat].join(','),end=[destination.lng,destination.lat].join(',');
- const url=ROUTE_URL+start+';'+end+'?overview=full&geometries=geojson&steps=false';
+ const url=ROUTE_URL+start+';'+end+'?overview=full&geometries=geojson&steps=true';
  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),16000);
  try{
   const res=await fetch(url,{signal:ctrl.signal});if(!res.ok)throw new Error('Rutttjänsten svarade inte');
@@ -352,7 +399,8 @@ async function calculateRoute(){
   const r=data.routes[0],coords=r.geometry?.coordinates;
   if(!Array.isArray(coords)||coords.length<2)throw new Error('Rutten saknar kartdata');
   routeDraw(coords);els.distance.textContent=fmtKm(r.distance);els.duration.textContent=fmtTime(r.duration);
-  say('Röd linje = bilrutten. Följ-läge är aktivt om knappen är grön. Du behöver räkna om rutten manuellt om du kör fel.');
+  initTurnNavigation(r);
+  say('Röd linje = bilrutten. En westernskylt visar nästa sväng. Om du lämnar rutten behöver du fortfarande räkna om manuellt.');
   if(!following){const bounds=new maplibregl.LngLatBounds();coords.forEach(c=>bounds.extend(c));map.fitBounds(bounds,{padding:Math.min(window.innerWidth*.2,100),maxZoom:15.5,duration:550});}
  }catch(e){if(rid!==routeRequest)return;say(e.name==='AbortError'?'Ruttservern tog för lång tid. Försök igen.':'Kunde inte beräkna bilrutt: '+e.message+'. Försök igen.');}
  finally{clearTimeout(timer);if(rid===routeRequest)els.routeBtn.disabled=!current||!destination;}

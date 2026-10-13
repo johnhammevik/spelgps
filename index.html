@@ -93,6 +93,8 @@ let following=false, demoTimer=null, demoIndex=0, gpsWatch=null, gpsSession=0, h
 let routeRequest=0, currentRoute=null, marker=null, miniMarker=null, targetMarker=null;
 let poiMarkers=[], searchController=null, lastSearchAt=0, lastPOIAt=0;
 let panelHeight=370;
+let offRouteCount = 0;
+let lastRerouteAt = 0;
 const emptyGeo = () => ({type:'FeatureCollection',features:[]});
 const lineGeo = coords => ({type:'FeatureCollection',features:[{type:'Feature',properties:{},geometry:{type:'LineString',coordinates:coords}}]});
 const isNumber = v => typeof v==='number' && Number.isFinite(v);
@@ -189,6 +191,74 @@ function rad(d){return d*Math.PI/180;}
 function degrees(r){return r*180/Math.PI;}
 function bearingOf(a,b){const d=rad(b.lng-a.lng),l1=rad(a.lat),l2=rad(b.lat);return (degrees(Math.atan2(Math.sin(d)*Math.cos(l2),Math.cos(l1)*Math.sin(l2)-Math.sin(l1)*Math.cos(l2)*Math.cos(d)))+360)%360;}
 function metres(a,b){const dLat=rad(b.lat-a.lat),dLon=rad(b.lng-a.lng);const x=Math.sin(dLat/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLon/2)**2;return 12742000*Math.asin(Math.min(1,Math.sqrt(x)));}
+function distanceToRoute(pos, coords) {
+  const latScale = 111320;
+  const lonScale = latScale * Math.cos(rad(pos.lat));
+
+  let shortest = Infinity;
+
+  for (let i = 1; i < coords.length; i++) {
+    const a = coords[i - 1];
+    const b = coords[i];
+
+    const x1 = (a[0] - pos.lng) * lonScale;
+    const y1 = (a[1] - pos.lat) * latScale;
+    const x2 = (b[0] - pos.lng) * lonScale;
+    const y2 = (b[1] - pos.lat) * latScale;
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lengthSq = dx * dx + dy * dy;
+
+    const t = lengthSq === 0 ? 0 :
+      Math.max(0, Math.min(1,
+        -(x1 * dx + y1 * dy) / lengthSq
+      ));
+
+    shortest = Math.min(
+      shortest,
+      Math.hypot(x1 + t * dx, y1 + t * dy)
+    );
+  }
+
+  return shortest;
+}
+
+function checkForDetour(accuracy) {
+  if (
+    !destination ||
+    !current ||
+    !currentRoute ||
+    currentRoute.length < 2 ||
+    !isNumber(accuracy) ||
+    accuracy > 35
+  ) {
+    offRouteCount = 0;
+    return;
+  }
+
+  const distance = distanceToRoute(
+    current, currentRoute
+  );
+
+  if (distance > Math.max(75, accuracy * 2)) {
+    offRouteCount++;
+  } else {
+    offRouteCount = 0;
+  }
+
+  // Kräv tre GPS-mätningar och minst
+  // 90 sekunder mellan omräkningarna.
+  if (
+    offRouteCount < 3 ||
+    Date.now() - lastRerouteAt < 90000
+  ) return;
+
+  offRouteCount = 0;
+  lastRerouteAt = Date.now();
+
+  calculateRoute();
+}
 function smoothedAngle(oldAngle,nextAngle){const delta=((nextAngle-oldAngle+540)%360)-180;return (oldAngle+delta*.48+360)%360;}
 function onPosition({lat,lng,accuracy=null,speed=null,course=null,timestamp=Date.now(),demo=false}){
  if(!isNumber(lat)||!isNumber(lng))return;
@@ -205,7 +275,11 @@ function onPosition({lat,lng,accuracy=null,speed=null,course=null,timestamp=Date
  els.accuracy.textContent=demo?'DEMO':isNumber(accuracy)?`${Math.round(accuracy)} m`:'—';
  els.gpsState.textContent=demo?'● SIMULERING':'● GPS AKTIV';
  els.routeBtn.disabled=!destination;
- positionMarkers([lng,lat]);camera(false);
+ positionMarkers([lng,lat]);
+camera(false);
+
+if (!demo) {
+  checkForDetour(accuracy);
 }
 function clearGps(){gpsSession++;if(gpsWatch!==null&&navigator.geolocation)navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;els.stopBtn.style.display='none';els.gpsBtn.textContent='◎ Starta GPS';}
 function stopDemo(){if(demoTimer!==null)clearInterval(demoTimer);demoTimer=null;els.demoBtn.textContent='▶ Testkör';}

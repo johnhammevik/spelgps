@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#38291e">
 <meta name="description" content="Frontier GPS: westerninspirerad navigationsprototyp med live-GPS, rund minimap och rutter i Sverige.">
-<title>Frontier GPS 3.2 | Westernkarta</title>
+<title>Frontier GPS 3.3 | Westernkarta</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
 <style>
 :root{--ink:#32251b;--dark:#35271e;--rust:#9b3025;--gold:#ba8b4a;--cream:#f6e6bc;--paper:#e9d3a5;--muted:#745639;--panel-height:370px}
@@ -38,6 +38,36 @@ button,input{font:inherit}button{cursor:pointer;touch-action:manipulation}button
 .goal-dot{height:38px;width:38px;display:grid;place-items:center;filter:drop-shadow(0 2px 2px #21181180);cursor:pointer}.goal-dot svg{width:38px;height:38px}
 .poi-dot{border:2px solid #3b2b1d;background:#e9d3a6;color:#33251a;box-shadow:2px 2px 0 #3b2a1b60;min-width:30px;height:30px;display:grid;place-items:center;border-radius:50%;font-size:16px;cursor:pointer}.poi-dot.fuel{background:#8f392b;color:#ffe5c4}.poi-dot.repair{background:#46574a;color:#fff1ce}.poi-dot.sight{background:#d2b16c;color:#473220}
 
+/* Kapitel III: faktisk GPS-hastighet och försiktigt matchad OSM-hastighetsgräns. */
+.livebox{display:flex;align-items:center;gap:12px;min-width:190px;min-height:80px;text-align:center}
+.live-speed{min-width:77px;flex:1;text-align:right}
+.livebox .speed{white-space:nowrap}
+.livebox .speed-origin{font:700 9px/1.1 system-ui,sans-serif;color:#855633;letter-spacing:.04em;min-height:10px}
+.limit-display{width:63px;flex:0 0 63px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.speed-sign{width:54px;height:54px;border:5px solid #a83b2e;background:#fff2d7;border-radius:50%;box-shadow:0 0 0 2px #f5e5c5,inset 0 1px 2px #49302222;display:grid;place-items:center;color:#251a17;font:900 21px/1 system-ui,sans-serif}
+.speed-sign.unknown{border-color:#8b775c;color:#735d43;font-size:19px}
+.speed-sign .limit-value{font-variant-numeric:tabular-nums}
+.limit-caption{font:800 8px/1 system-ui,sans-serif;color:#6d462f;letter-spacing:.07em;white-space:nowrap}
+.limit-tools{margin-top:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.limit-tools .btn{flex:0 0 auto;min-height:36px;padding:5px 8px;font-size:10px}
+.limit-info{font:10px/1.35 system-ui,sans-serif;color:#725137;flex:1;min-width:150px}
+@media(max-width:650px){
+ .masthead{max-width:calc(100vw - 183px);min-width:0}
+ .masthead .subline{display:none}
+ .masthead h1{font-size:clamp(14px,4.8vw,20px);white-space:nowrap}
+ .masthead .brandseal{width:29px;height:29px;font-size:16px}
+ .livebox{gap:6px;min-width:156px;padding:5px 6px;min-height:66px}
+ .live-speed{min-width:58px}
+ .livebox .speed{font-size:23px}
+ .livebox .state{font-size:7px}
+ .livebox .speed-origin{font-size:7px}
+ .limit-display{width:49px;flex-basis:49px;gap:3px}
+ .speed-sign{width:45px;height:45px;border-width:4px;font-size:18px}
+ .speed-sign.unknown{font-size:16px}
+ .limit-caption{font-size:7px}
+}
+@media(max-width:350px){.masthead .brandseal{display:none}.masthead{padding:7px 5px}.masthead h1{font-size:16px}.livebox{min-width:151px}}
+body.focus .livebox{position:fixed;top:calc(12px + env(safe-area-inset-top));right:12px}
 /* Kapitel II: en westerninspirerad skylt med nästa sväng. */
 .turn-banner{position:fixed;z-index:13;top:calc(105px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(420px,calc(100vw - 280px));min-height:76px;display:flex;align-items:center;gap:12px;padding:10px 14px;background:linear-gradient(145deg,#f6e5bd,#dac093);border:3px double #654629;outline:2px solid #302116;box-shadow:3px 5px 0 #2e1d15a8;color:#3c291b;pointer-events:none}
 .turn-banner[hidden]{display:none}
@@ -72,7 +102,10 @@ body.focus .card{transform:translateY(125%);opacity:0;pointer-events:none}body.f
 <div id="map" role="application" aria-label="Interaktiv westerninspirerad karta. Klicka för att välja mål."></div>
 <header class="top">
  <div class="masthead"><div class="brandseal" aria-hidden="true">✦</div><div><div class="overline">EST. MMXXVI · SVERIGE</div><h1>Frontier GPS</h1><div class="subline">The Old Frontier · Western Atlas</div></div></div>
- <div class="livebox" aria-live="polite"><div class="state" id="gpsState">GPS AV</div><div class="speed"><span id="speed">—</span> <span class="unit">KM/H</span></div></div>
+ <div class="livebox" aria-live="polite">
+  <div class="live-speed"><div class="state" id="gpsState">GPS AV</div><div class="speed"><span id="speed">—</span> <span class="unit">KM/H</span></div><div class="speed-origin" id="speedOrigin">GPS-HASTIGHET</div></div>
+  <div class="limit-display" role="status" aria-label="Hastighetsgräns från OpenStreetMap; uppgiften kan vara felaktig"><div class="speed-sign unknown" id="speedSign"><span class="limit-value" id="speedLimit">?</span></div><span class="limit-caption">OSM-GRÄNS</span></div>
+ </div>
 </header>
 <div class="compass" aria-label="Kompass"><div class="compass-disc" id="compassDisc"><span class="compass-n">N</span><span class="compass-arrow">↑</span></div></div>
 <div class="toolbelt">
@@ -98,6 +131,8 @@ body.focus .card{transform:translateY(125%);opacity:0;pointer-events:none}body.f
  <div class="results" id="searchResults" aria-label="Sökresultat"></div>
  <div class="trip"><div class="metric"><span>AVSTÅND</span><strong id="distance">—</strong></div><div class="metric"><span>KÖRTID</span><strong id="duration">—</strong></div><div class="metric"><span>GPS ±</span><strong id="accuracy">—</strong></div></div>
  <div class="route-actions"><button class="btn paper" id="routeBtn" type="button" disabled>↻ Beräkna rutt</button><button class="btn paper" id="poiBtn" type="button">✦ Visa platser</button></div>
+ <div class="limit-tools"><button class="btn paper" id="limitBtn" type="button" aria-pressed="false">◉ Visa väggränser</button><span class="limit-info" id="limitInfo">Avstängt – tryck för att hämta uppgifter från OpenStreetMap.</span></div>
+ <p class="note"><strong>Hastighetsgränser:</strong> Visas endast för entydigt matchade vägar med uttrycklig uppgift i OpenStreetMap. Okänt betyder att inget säkert värde hittades. Skyltning på plats gäller alltid.</p>
  <p class="note"><strong>Platssymboler:</strong> ⛽ bensin · 🔧 verkstad · ★ sevärdhet. Tryck på symbolen för att välja mål. Tryck på kartan för att markera valfri destination. Rutter räknas om manuellt.</p>
  <p class="note"><button id="stopBtn" class="btn paper" type="button" style="min-height:30px;padding:4px 9px;display:none">■ Stoppa GPS</button> <span>Prototyp – inte för säkerhetskritisk navigering. Använd endast stillastående eller som passagerare.</span></p>
  <p class="note">Kartdata: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · Sökning: <a href="https://nominatim.org/" target="_blank" rel="noopener">Nominatim</a> · Rutter: <a href="https://project-osrm.org/" target="_blank" rel="noopener">OSRM</a> · Platser: <a href="https://overpass-api.de/" target="_blank" rel="noopener">Overpass</a>.</p>
@@ -112,7 +147,7 @@ const GEOCODE_URL = 'https://nominatim.openstreetmap.org/search';
 const POI_URL = 'https://overpass-api.de/api/interpreter';
 const START = [18.0632,59.3327]; // Stockholm; [längdgrad, breddgrad]
 const $ = id => document.getElementById(id);
-const els = { panel:$('panel'), message:$('message'), gpsBtn:$('gpsBtn'), demoBtn:$('demoBtn'), stopBtn:$('stopBtn'), followBtn:$('followBtn'), focusBtn:$('focusBtn'), gpsState:$('gpsState'), speed:$('speed'), accuracy:$('accuracy'), distance:$('distance'), duration:$('duration'), routeBtn:$('routeBtn'), poiBtn:$('poiBtn'), searchForm:$('searchForm'), searchBtn:$('searchBtn'), searchInput:$('destinationInput'), results:$('searchResults'), compass:$('compassDisc') };
+const els = { panel:$('panel'), message:$('message'), gpsBtn:$('gpsBtn'), demoBtn:$('demoBtn'), stopBtn:$('stopBtn'), followBtn:$('followBtn'), focusBtn:$('focusBtn'), gpsState:$('gpsState'), speed:$('speed'), accuracy:$('accuracy'), distance:$('distance'), duration:$('duration'), routeBtn:$('routeBtn'), poiBtn:$('poiBtn'), searchForm:$('searchForm'), searchBtn:$('searchBtn'), searchInput:$('destinationInput'), results:$('searchResults'), compass:$('compassDisc'), speedOrigin:$('speedOrigin'), speedLimit:$('speedLimit'), speedSign:$('speedSign'), limitBtn:$('limitBtn'), limitInfo:$('limitInfo') };
 let map = null, mini = null;
 let mapReady=false, miniReady=false;
 let current=null, previous=null, heading=0, hasHeading=false, destination=null;
@@ -120,6 +155,11 @@ let following=false, demoTimer=null, demoIndex=0, gpsWatch=null, gpsSession=0, h
 let routeRequest=0, currentRoute=null, marker=null, miniMarker=null, targetMarker=null;
 let poiMarkers=[], searchController=null, lastSearchAt=0, lastPOIAt=0;
 let panelHeight=370;
+// Gränser hämtas först när användaren själv aktiverar funktionen. Max ett anrop/120 s.
+let limitEnabled=false,limitSegments=[],limitLastCenter=null,limitLastFetch=0;
+let limitRequest=0,limitPending=false,limitController=null;
+const LIMIT_MIN_INTERVAL_MS=120000;
+const LIMIT_CACHE_RADIUS_M=340;
 // Ruttdetaljer för nästa-sväng-panelen. Inga extra anrop görs vid GPS-uppdateringar.
 let routeDistances=[];
 let turns=[];
@@ -311,10 +351,130 @@ function updateTurnBanner(){
  lastProgress=Math.max(lastProgress,at.progress);
 }
 
+// Föredra mobilens GPS-hastighet. Om den saknas visas bara en mycket försiktig uppskattning.
+function measuredSpeedKmh(nativeSpeed,previousFix,nextFix,timestamp,accuracy){
+ if(isNumber(nativeSpeed)&&nativeSpeed>=0&&nativeSpeed<=85)return {kmh:nativeSpeed*3.6,method:'GPS-HASTIGHET'};
+ if(!previousFix||!isNumber(accuracy)||accuracy>20||!isNumber(previousFix.accuracy)||previousFix.accuracy>20)return {kmh:null,method:'HASTIGHET SAKNAS'};
+ const seconds=(timestamp-previousFix.timestamp)/1000;
+ if(seconds<4||seconds>25)return {kmh:null,method:'HASTIGHET SAKNAS'};
+ const dist=metres(previousFix,nextFix),uncertainty=Math.hypot(accuracy,previousFix.accuracy);
+ if(dist<Math.max(25,uncertainty*2.5))return {kmh:null,method:'HASTIGHET SAKNAS'};
+ const kmh=dist/seconds*3.6;
+ return kmh<=220?{kmh,method:'≈ GPS-BERÄKNAD'}:{kmh:null,method:'HASTIGHET SAKNAS'};
+}
+function clearLimitDisplay(detail){
+ els.speedLimit.textContent='?';els.speedSign.classList.add('unknown');
+ els.limitInfo.textContent=detail||'Okänd – ingen entydig uppgift för den här vägen.';
+}
+function setLimitDisplay(kmh){
+ els.speedLimit.textContent=String(kmh);els.speedSign.classList.remove('unknown');
+ els.limitInfo.textContent='Uppgift i OpenStreetMap. Kontrollera alltid vägskyltar.';
+}
+function parseRoadLimit(raw){
+ if(typeof raw!=='string')return null;
+ const m=raw.trim().match(/^(\d{1,3})(?:\s*km\/h)?$/i);
+ if(!m)return null;
+ const n=Number(m[1]);return n>=5&&n<=150?n:null;
+}
+function distanceToSegment(loc,a,b){
+ const y=111320,x=y*Math.cos(rad(loc.lat));
+ const ax=(a.lon-loc.lng)*x,ay=(a.lat-loc.lat)*y;
+ const dx=(b.lon-a.lon)*x,dy=(b.lat-a.lat)*y;
+ const len=dx*dx+dy*dy,t=len?Math.max(0,Math.min(1,-(ax*dx+ay*dy)/len)):0;
+ return {meters:Math.hypot(ax+t*dx,ay+t*dy),heading:(Math.atan2(dx,dy)*180/Math.PI+360)%360};
+}
+function nearestRoadLimit(loc,accuracy,course){
+ if(!isNumber(accuracy)||accuracy>25)return null;
+ const maxDistance=Math.min(22,Math.max(11,accuracy*1.4));
+ const candidates=[];
+ for(const road of limitSegments){
+   let nearest=null;
+   for(let i=1;i<road.geometry.length;i++){
+     const a=distanceToSegment(loc,road.geometry[i-1],road.geometry[i]);
+     if(!nearest||a.meters<nearest.meters)nearest=a;
+   }
+   if(!nearest||nearest.meters>maxDistance)continue;
+   // Körkursen är en hjälp, inte ett krav när mobilen saknar sådan uppgift.
+   if(isNumber(course) && isNumber(current?.kmh) && current.kmh>=18){
+     const angle=Math.abs(((nearest.heading-course+540)%360)-180);
+     if(Math.min(angle,180-angle)>45)continue;
+   }
+   candidates.push({limit:road.limit,distance:nearest.meters});
+ }
+ candidates.sort((a,b)=>a.distance-b.distance);
+ if(!candidates.length)return null;
+ const best=candidates[0];
+ // Olika hastigheter på två nära vägar/körbanor? Visa inte något tveksamt värde.
+ if(candidates.some(c=>c.limit!==best.limit && c.distance<best.distance+12))return null;
+ return best.limit;
+}
+function updateRoadLimit(){
+ if(!limitEnabled){clearLimitDisplay('Avstängt – tryck för att hämta uppgifter från OpenStreetMap.');return;}
+ if(!current){clearLimitDisplay('Starta GPS för att kontrollera vägen.');return;}
+ if(current.demo){clearLimitDisplay('Demoläge – ingen riktig hastighetsgräns visas.');return;}
+ if(!isNumber(current.accuracy)||current.accuracy>25){clearLimitDisplay('GPS-noggrannheten är för låg för vägmatchning.');return;}
+ if(!limitLastCenter||metres(current,limitLastCenter)>LIMIT_CACHE_RADIUS_M){
+   clearLimitDisplay(limitPending?'Söker uppgift för närliggande väg …':'Okänd – vägen har ingen aktuell matchning.');
+   maybeFetchRoadLimits();return;
+ }
+ const number=nearestRoadLimit(current,current.accuracy,hasHeading?heading:null);
+ if(number===null)clearLimitDisplay(limitPending?'Söker uppgift för närliggande väg …':'Okänd – osäker väg eller saknad OSM-uppgift.');
+ else setLimitDisplay(number);
+ maybeFetchRoadLimits();
+}
+async function maybeFetchRoadLimits(){
+ if(!limitEnabled||limitPending||!current||current.demo||!isNumber(current.accuracy)||current.accuracy>25)return;
+ if(Date.now()-limitLastFetch<LIMIT_MIN_INTERVAL_MS)return;
+ if(limitLastCenter&&metres(current,limitLastCenter)<220)return;
+ const here={lat:current.lat,lng:current.lng};
+ // Litet område, uttryckliga maxspeed-värden och inga kontinuerliga API-anrop.
+ const query=`[out:json][timeout:12];way(around:350,${here.lat.toFixed(5)},${here.lng.toFixed(5)})["highway"]["maxspeed"];out geom;`;
+ const rid=++limitRequest;
+ limitPending=true;limitLastFetch=Date.now();limitLastCenter=here;
+ els.limitInfo.textContent='Hämtar OSM-vägar i närheten …';
+ const controller=new AbortController();limitController=controller;
+ const timer=setTimeout(()=>controller.abort(),18000);
+ try{
+   const response=await fetch(POI_URL+'?data='+encodeURIComponent(query),{signal:controller.signal});
+   if(!response.ok)throw Error('Tjänsten är upptagen');
+   const data=await response.json();
+   if(rid!==limitRequest||!limitEnabled)return;
+   limitSegments=(data.elements||[]).filter(item=>item.type==='way'&&Array.isArray(item.geometry))
+     .map(item=>{
+       const tags=item.tags||{};
+       // Villkorliga, dynamiska eller färdriktningsberoende gränser går inte att verifiera.
+       if(Object.keys(tags).some(k=>k.startsWith('maxspeed:conditional')||k.startsWith('maxspeed:forward')||k.startsWith('maxspeed:backward')||k.startsWith('maxspeed:lanes')))return null;
+       if(tags['maxspeed:variable']&&tags['maxspeed:variable']!=='no')return null;
+       const limit=parseRoadLimit(tags.maxspeed);
+       if(!limit||item.geometry.length<2)return null;
+       return {limit,geometry:item.geometry};
+     }).filter(Boolean);
+ }catch(err){
+   if(rid!==limitRequest)return;
+   limitSegments=[];
+   els.limitInfo.textContent='OSM svarar inte just nu – hastighetsgräns okänd.';
+ }finally{
+   clearTimeout(timer);
+   if(rid===limitRequest){limitPending=false;limitController=null;updateRoadLimit();}
+ }
+}
+function toggleRoadLimits(){
+ limitEnabled=!limitEnabled;
+ els.limitBtn.textContent=limitEnabled?'■ Dölj väggränser':'◉ Visa väggränser';
+ els.limitBtn.setAttribute('aria-pressed',String(limitEnabled));
+ if(!limitEnabled){
+   limitRequest++;limitController?.abort();limitController=null;limitPending=false;
+   clearLimitDisplay('Avstängt – tryck för att hämta uppgifter från OpenStreetMap.');
+   return;
+ }
+ updateRoadLimit();
+}
 function smoothedAngle(oldAngle,nextAngle){const delta=((nextAngle-oldAngle+540)%360)-180;return (oldAngle+delta*.48+360)%360;}
 function onPosition({lat,lng,accuracy=null,speed=null,course=null,timestamp=Date.now(),demo=false}){
  if(!isNumber(lat)||!isNumber(lng))return;
- const next={lat,lng};const kmh=isNumber(speed)&&speed>=0?speed*3.6:null;
+ const next={lat,lng};
+ const speedInfo=measuredSpeedKmh(speed,previous,next,timestamp,accuracy);
+ const kmh=speedInfo.kmh;
  let newHeading=null;
  if(isNumber(course) && (demo || speed===null || speed>=2))newHeading=course;
  else if(previous && timestamp-previous.timestamp<65000 && timestamp>previous.timestamp){
@@ -322,17 +482,19 @@ function onPosition({lat,lng,accuracy=null,speed=null,course=null,timestamp=Date
    if(diff>Math.max(10,isNumber(accuracy)?accuracy*.6:10))newHeading=bearingOf(previous,next);
  }
  if(isNumber(newHeading)){heading=hasHeading?smoothedAngle(heading,newHeading):newHeading;hasHeading=true;}
- previous={lat,lng,timestamp};current={lat,lng,accuracy,kmh};
+ previous={lat,lng,timestamp,accuracy};current={lat,lng,accuracy,kmh,demo};
  els.speed.textContent=isNumber(kmh)?String(Math.round(kmh)):'—';
+ els.speedOrigin.textContent=demo?'DEMO-HASTIGHET':speedInfo.method;
  els.accuracy.textContent=demo?'DEMO':isNumber(accuracy)?`${Math.round(accuracy)} m`:'—';
  els.gpsState.textContent=demo?'● SIMULERING':'● GPS AKTIV';
  els.routeBtn.disabled=!destination;
  positionMarkers([lng,lat]);camera(false);
  updateTurnBanner();
+ updateRoadLimit();
 }
 function clearGps(){gpsSession++;if(gpsWatch!==null&&navigator.geolocation)navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;els.stopBtn.style.display='none';els.gpsBtn.textContent='◎ Starta GPS';}
 function stopDemo(){if(demoTimer!==null)clearInterval(demoTimer);demoTimer=null;els.demoBtn.textContent='▶ Testkör';}
-function removeLivePosition(){current=null;previous=null;hasHeading=false;heading=0;following=false;hasFix=false;followUI();els.gpsState.textContent='GPS AV';els.speed.textContent='—';els.accuracy.textContent='—';if(marker){marker.remove();marker=null;}if(miniMarker){miniMarker.remove();miniMarker=null;}els.routeBtn.disabled=true;updateTurnBanner();}
+function removeLivePosition(){current=null;previous=null;hasHeading=false;heading=0;following=false;hasFix=false;followUI();els.gpsState.textContent='GPS AV';els.speed.textContent='—';els.speedOrigin.textContent='GPS-HASTIGHET';els.accuracy.textContent='—';updateRoadLimit();if(marker){marker.remove();marker=null;}if(miniMarker){miniMarker.remove();miniMarker=null;}els.routeBtn.disabled=true;updateTurnBanner();}
 function startGPS(){
  if(!navigator.geolocation){say('Den här webbläsaren stöder inte platsåtkomst. Använd Safari eller Chrome.');return;}
  if(!window.isSecureContext){say('Live-GPS kräver HTTPS. Publicera filen med GitHub Pages och öppna adressen på telefonen.');return;}
@@ -471,6 +633,7 @@ els.followBtn.addEventListener('click',follow);
 els.focusBtn.addEventListener('click',focusMode);
 els.routeBtn.addEventListener('click',calculateRoute);
 els.poiBtn.addEventListener('click',showPOIs);
+els.limitBtn.addEventListener('click',toggleRoadLimits);
 els.searchForm.addEventListener('submit',searchPlaces);
 if(typeof ResizeObserver!=='undefined')new ResizeObserver(updatePanelHeight).observe(els.panel);
 window.addEventListener('resize',()=>{updatePanelHeight();map?.resize();mini?.resize();});

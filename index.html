@@ -3,132 +3,270 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#09121d">
-  <title>SpelGPS – första prototypen</title>
+  <meta name="theme-color" content="#30241a">
+  <meta name="description" content="En westerninspirerad GPS-karta med riktiga vägar, position och bilrutter. En lärprototyp.">
+  <title>Frontier GPS – westerninspirerad karta</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
-    * { box-sizing: border-box; }
     :root {
-      --bg: #09121d;
-      --panel: rgba(8, 19, 31, .93);
-      --accent: #5cf6e5;
-      --accent-strong: #1cc4b9;
-      --text: #ebfaf9;
-      --muted: #9bb2bf;
-      --border: rgba(92,246,229,.28);
-      --tile-filter: grayscale(1) invert(1) hue-rotate(160deg) brightness(.68) contrast(1.23);
+      color-scheme: light;
+      --ink: #34291f;
+      --ink-light: #68513a;
+      --paper: #e8d5ae;
+      --paper-light: #f5e5c4;
+      --gold: #cfab6e;
+      --rust: #9b3126;
+      --border: #806245;
+      --panel-height: 255px;
     }
-    body[data-theme="retro"] {
-      --bg: #19170d; --panel: rgba(31, 30, 18, .94);
-      --accent: #f0ce73; --accent-strong: #b48c36;
-      --text: #fff5d6; --muted: #c0b08e;
-      --border: rgba(240,206,115,.30);
-      --tile-filter: grayscale(1) sepia(.5) invert(.85) hue-rotate(178deg) brightness(.70) contrast(1.12);
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body {
+      overflow: hidden;
+      color: var(--ink);
+      background: #d5bb90;
+      font-family: Georgia, Cambria, 'Times New Roman', serif;
     }
-    body[data-theme="tactical"] {
-      --bg: #0a170f; --panel: rgba(10,25,14,.94);
-      --accent: #94ef88; --accent-strong: #499b4f;
-      --text: #efffeb; --muted: #a7c6a5;
-      --border: rgba(148,239,136,.28);
-      --tile-filter: grayscale(1) invert(.94) sepia(.45) hue-rotate(54deg) brightness(.60) contrast(1.22);
+    #map { position: fixed; inset: 0; width: 100%; height: 100%; background: #d2bd96; }
+    #map::after {
+      content: ''; position: absolute; inset: 0; z-index: 390; pointer-events: none;
+      background:
+        repeating-linear-gradient(0deg, rgba(102,76,42,.030) 0px, rgba(102,76,42,.030) 1px, transparent 2px, transparent 5px),
+        radial-gradient(ellipse at 25% 12%, transparent 35%, rgba(106,68,28,.11) 100%),
+        linear-gradient(108deg, rgba(218,189,139,.10), rgba(255,242,210,.06) 65%, rgba(139,94,47,.13));
+      mix-blend-mode: multiply;
     }
-    html, body, #map { margin: 0; width: 100%; height: 100%; }
-    body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; overflow: hidden; }
-    #map { position: fixed; inset: 0; }
-    .leaflet-tile-pane { filter: var(--tile-filter); }
-    .leaflet-container { background: var(--bg); }
-    .leaflet-control-attribution { background: rgba(8,19,31,.88) !important; color:#d9e6e2; border-radius: 6px; padding: 3px 5px !important; font-size: 10px !important; }
-    .leaflet-control-attribution a { color: #b6efff !important; }
-    .leaflet-top.leaflet-right { top: 92px; right: 5px; }
-    .leaflet-control-zoom a { background: var(--panel) !important; color: var(--accent) !important; border-color: var(--border) !important; }
-    .leaflet-control-zoom { border: 1px solid var(--border) !important; }
+    .leaflet-tile-pane { filter: grayscale(1) sepia(.86) contrast(.88) brightness(1.14); opacity: .87; }
+    .leaflet-container { background: #d7c299; font-family: Georgia, serif; }
+    .leaflet-control-zoom {
+      position: fixed; z-index: 1070; top: calc(116px + env(safe-area-inset-top)); right: 15px;
+      border: 2px solid #493422 !important;
+      border-radius: 2px !important;
+      box-shadow: 2px 4px 0 #46342444 !important;
+      overflow: hidden;
+    }
+    .leaflet-control-zoom a {
+      background: #f0ddb6 !important; color: #39291b !important;
+      border-color: #9f835c !important; font-family: Georgia, serif !important;
+    }
+    .leaflet-control-attribution {
+      position: fixed !important;
+      left: 12px !important;
+      bottom: calc(var(--panel-height) + env(safe-area-inset-bottom) + 20px) !important;
+      margin: 0 !important;
+      max-width: calc(100vw - 24px);
+      font: 10px/1.35 system-ui, sans-serif !important;
+      color: #3a2b1a !important;
+      background: rgba(250,237,206,.88) !important;
+      padding: 3px 6px !important;
+      border: 1px solid rgba(77,48,25,.24);
+      border-radius: 2px;
+    }
+    .leaflet-control-attribution a { color: #663023 !important; }
+    .leaflet-div-icon { border: 0; background: transparent; }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #f0dfbb; color: #372719; }
+    .leaflet-popup-content-wrapper { border: 2px solid #876648; border-radius: 2px; box-shadow: 3px 4px 0 #3c2b1938; }
+    .leaflet-popup-content { font: 15px Georgia, serif; }
+    .leaflet-popup-close-button { color: #7a2f25 !important; }
+
     .topbar {
-      position: fixed; z-index: 1100; top: calc(env(safe-area-inset-top) + 10px); left: 12px; right: 12px;
-      display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+      position: fixed; top: calc(env(safe-area-inset-top) + 12px); left: 12px; right: 12px;
+      z-index: 1100; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
       pointer-events: none;
     }
-    .hud, .theme-wrap, .panel { background: var(--panel); border: 1px solid var(--border); box-shadow: 0 12px 38px rgba(0,0,0,.33); backdrop-filter: blur(10px); }
-    .hud { border-radius: 14px; padding: 12px 14px; max-width: min(67vw, 320px); }
-    .hud .eyebrow { font-size: 10px; letter-spacing: .18em; font-weight: 800; color: var(--accent); }
-    .hud h1 { margin: 3px 0 5px; font-size: clamp(17px, 3.5vw, 23px); letter-spacing: .04em; }
-    .hud .small { font-size: 11px; color: var(--muted); line-height: 1.35; }
-    .theme-wrap { border-radius: 12px; padding: 9px 10px; font-size: 11px; pointer-events: auto; flex-shrink: 0; }
-    .theme-wrap label { display: block; color: var(--muted); margin-bottom: 5px; }
-    select { display: block; background: transparent; color: var(--text); border: 0; outline-color: var(--accent); max-width: 118px; font-size: 13px; font-weight: 750; }
-    select option { background: #172331; }
-    .panel {
-      position: fixed; z-index: 1100; left: 12px; right: 12px;
-      bottom: calc(env(safe-area-inset-bottom) + 12px); max-width: 560px; margin-inline: auto;
-      padding: 15px; border-radius: 18px;
+    .brand {
+      display: flex; align-items: center; gap: 12px;
+      min-width: 0; max-width: calc(100% - 100px); padding: 13px 18px 12px 13px;
+      background: linear-gradient(135deg, #2e2118 0%, #413020 62%, #2c2118 100%);
+      border: 2px solid #ba9260;
+      outline: 2px solid #362519;
+      box-shadow: 0 7px 25px #24160c65;
+      color: #f5e4bf;
     }
-    .line { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-    .label { font-size: 10px; color: var(--accent); letter-spacing: .17em; font-weight: 800; }
-    #gpsBadge { font-size: 10px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 40px; color: var(--accent); white-space: nowrap; }
-    #message { color: var(--text); font-size: 13px; line-height: 1.4; min-height: 35px; margin: 12px 0 10px; }
-    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0 12px; }
-    .stat { background: rgba(255,255,255,.035); border: 1px solid var(--border); border-radius: 11px; padding: 9px 12px; }
-    .stat span { display: block; color: var(--muted); font-size: 10px; letter-spacing: .08em; margin-bottom: 2px; }
-    .stat strong { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
-    .buttons { display: flex; gap: 8px; }
-    button { font-family: inherit; font-weight: 800; cursor: pointer; border: 1px solid var(--border); border-radius: 11px; min-height: 46px; padding: 10px; }
-    .primary { background: var(--accent); color: #071219; flex: 1; }
-    .secondary { background: rgba(255,255,255,.06); color: var(--text); flex: 1; }
-    button:disabled { opacity: .48; cursor: not-allowed; }
-    .bottomline { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; margin-top: 10px; }
-    .bottomline small { color: var(--muted); font-size: 10px; }
-    .textbutton { background: none; border: 0; min-height: 26px; padding: 2px; color: var(--accent); font-size: 11px; }
-    .player-arrow { width: 31px; height: 31px; background: var(--accent); color: #09121d; border: 3px solid #fff; border-radius: 50%; display: grid; place-items: center; box-shadow: 0 0 0 7px rgba(92,246,229,.18), 0 2px 15px #0009; font-weight: 900; line-height: 1; }
-    .goal-dot { width: 22px; height: 22px; background: #ff7f75; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 5px rgba(255,127,117,.2); }
-    .leaflet-div-icon { background: none; border: none; }
-    .leaflet-container .leaflet-popup-content-wrapper { color: var(--text); background: var(--panel); }
-    .leaflet-container .leaflet-popup-tip { background: var(--panel); }
-    @media (max-width: 380px) { .theme-wrap { padding: 8px 7px; } .hud { padding: 10px; } .panel { padding: 12px; } .buttons button { font-size: 12px; } }
+    .seal {
+      width: 47px; height: 47px; flex: 0 0 47px;
+      display: grid; place-items: center;
+      border: 2px solid #c0a076; border-radius: 50%;
+      background: radial-gradient(circle, #5c3c28, #2a1d16);
+      color: #e2c48c; font-size: 26px; line-height: 1;
+      box-shadow: inset 0 0 0 3px #38261c, inset 0 0 0 4px #937249;
+    }
+    .brand-eyebrow { font: 700 9px/1.3 system-ui, sans-serif; letter-spacing: .24em; color: #c9a976; white-space: nowrap; }
+    .brand h1 { margin: 1px 0 2px; font-size: clamp(21px, 5vw, 33px); line-height: 1; text-transform: uppercase; letter-spacing: .055em; font-weight: 900; white-space: nowrap; }
+    .brand-sub { font: 11px/1.3 Georgia, serif; font-style: italic; color: #d9c39b; }
+    .compass {
+      position: relative; width: 88px; height: 88px; flex: 0 0 88px;
+      border: 4px solid #35251a; border-radius: 50%;
+      outline: 2px solid #bb925d;
+      background: radial-gradient(circle at center, #d8c199 0 41%, #b79767 68%, #6e4b30 72%, #32231a 75%);
+      box-shadow: 0 6px 20px #23180c70, inset 0 0 0 2px #d8bf87;
+      color: #38271a;
+    }
+    .compass::before, .compass::after { content: ''; position: absolute; pointer-events: none; }
+    .compass::before { height: 57px; width: 1px; background: #57402f77; top: 12px; left: 38px; }
+    .compass::after { width: 57px; height: 1px; background: #57402f77; top: 38px; left: 12px; }
+    .direction { position: absolute; z-index: 1; font: bold 12px/1 Georgia, serif; }
+    .north { top: 6px; left: 34px; color: #7e241c; }
+    .south { bottom: 5px; left: 35px; }
+    .west { top: 34px; left: 8px; }
+    .east { top: 34px; right: 8px; }
+    .needle { position: absolute; z-index: 3; top: 27px; left: 26px; width: 28px; height: 28px; filter: drop-shadow(0 1px 1px #0009); }
+    .needle::before, .needle::after { content: ''; position: absolute; left: 8px; border-left: 6px solid transparent; border-right: 6px solid transparent; }
+    .needle::before { top: -2px; border-bottom: 16px solid #942c24; }
+    .needle::after { top: 14px; border-top: 14px solid #35251c; }
+
+    .map-note {
+      position: fixed; z-index: 1020; top: calc(114px + env(safe-area-inset-top));
+      left: 12px; pointer-events: none;
+      max-width: min(305px, calc(100vw - 140px));
+      padding: 9px 13px; background: rgba(240,217,177,.93);
+      border: 1px solid #70533b; box-shadow: 2px 3px 0 #4f3b293b;
+      font: 12px/1.45 Georgia, serif;
+    }
+    .map-note strong { color: #8f2b21; }
+    .panel {
+      position: fixed; z-index: 1100;
+      left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
+      max-width: 540px; margin: 0 auto;
+      padding: 14px 17px 12px;
+      background:
+        radial-gradient(circle at 8% 4%, #fff7e24b 0, transparent 35%),
+        radial-gradient(circle at 95% 100%, #aa733e22 0, transparent 30%),
+        linear-gradient(112deg, #eedcb8, #e1c89b);
+      border: 3px double #745337;
+      outline: 3px solid #38281c;
+      box-shadow: 0 9px 30px #28170577, inset 0 0 0 3px #e9d4aa;
+    }
+    .panel::before, .panel::after { content: '◆'; position: absolute; top: 5px; color: #93623f; font-size: 10px; }
+    .panel::before { left: 8px; } .panel::after { right: 8px; }
+    .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 7px; }
+    .chapter { margin-bottom: 4px; font: 700 9px/1.1 system-ui, sans-serif; text-transform: uppercase; letter-spacing: .2em; color: #895332; }
+    .panel-head h2 { margin: 0; font-size: clamp(19px, 4.6vw, 27px); line-height: 1; text-transform: uppercase; letter-spacing: .045em; }
+    .gps-state { padding: 5px 8px; border: 1px solid #865e39; white-space: nowrap; background: #dbc49a; font: 800 10px/1.2 system-ui, sans-serif; letter-spacing: .06em; }
+    .gps-state.active { background: #c9d0b3; border-color: #597050; color: #365335; }
+    .gps-state.demo { background: #e5c69b; color: #78451e; }
+    .flourish { display: flex; align-items: center; gap: 8px; color: #996b43; font-size: 11px; line-height: 1; }
+    .flourish::before, .flourish::after { content: ''; height: 1px; background: linear-gradient(90deg, transparent, #9b744d); flex: 1; }
+    .flourish::after { background: linear-gradient(90deg, #9b744d, transparent); }
+    #message { margin: 8px 0 10px; min-height: 37px; font: 13px/1.4 Georgia, serif; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 11px; }
+    .stat { border: 1px solid #92704c; background: #f8e9c347; padding: 8px 11px 6px; min-width: 0; }
+    .stat-label { display: block; margin-bottom: 3px; font: 700 9px/1.2 system-ui, sans-serif; letter-spacing: .11em; color: #704b2e; }
+    .stat strong { display: block; font-size: clamp(20px, 5vw, 26px); line-height: 1.2; white-space: nowrap; }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    button { cursor: pointer; font-family: Georgia, serif; }
+    .action {
+      width: 100%; min-height: 48px; padding: 8px 10px;
+      border: 2px solid #3d2c20;
+      box-shadow: 2px 3px 0 #3e302347;
+      font-size: 13px; font-weight: bold; letter-spacing: .055em;
+      text-transform: uppercase;
+    }
+    .action.main { background: #34271e; color: #f4dfb8; }
+    .action.second { background: #a43a2b; color: #fff0d6; }
+    .action:focus-visible, .tiny-button:focus-visible { outline: 3px solid #b7502f; outline-offset: 2px; }
+    .action:disabled { cursor: not-allowed; opacity: .47; }
+    .panel-foot { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .tiny-button { background: none; border: 0; padding: 3px 0; color: #8f2c21; font: bold 12px Georgia, serif; text-decoration: underline; text-underline-offset: 2px; }
+    .disclaimer { color: #7e6548; text-align: right; font: 10px/1.25 system-ui, sans-serif; }
+    .traveler-marker {
+      width: 33px; height: 33px; position: relative;
+      border: 3px solid #f6e3bd; border-radius: 50%;
+      background: #303a37; box-shadow: 0 0 0 4px #333126a3, 0 4px 11px #0008;
+      display: grid; place-items: center;
+    }
+    .traveler-marker svg { width: 21px; height: 21px; transform: rotate(var(--heading, 0deg)); }
+    .waypoint-marker {
+      width: 30px; height: 30px; border: 3px solid #f5ddae;
+      outline: 3px solid #352219; border-radius: 50%;
+      background: #9b3126; color: #f8e6bf;
+      box-shadow: 0 3px 10px #0006;
+      display: grid; place-items: center; font: bold 20px/1 Georgia, serif;
+    }
+    @media (max-width: 420px) {
+      .brand { gap: 8px; padding: 11px 10px; }
+      .seal { width: 38px; height: 38px; flex-basis: 38px; font-size: 22px; }
+      .brand h1 { font-size: 22px; }
+      .brand-eyebrow { font-size: 8px; }
+      .brand-sub { font-size: 10px; }
+      .compass { transform: scale(.9); transform-origin: top right; }
+      .panel { padding: 12px 12px 10px; }
+      .action { font-size: 12px; }
+      .map-note { top: calc(104px + env(safe-area-inset-top)); }
+    }
+    @media (max-height: 630px) {
+      .panel { padding-top: 9px; padding-bottom: 8px; }
+      .panel-head { margin-bottom: 3px; }
+      #message { margin: 6px 0; min-height: 0; }
+      .stats { margin-bottom: 7px; }
+      .panel-foot { margin-top: 5px; }
+      .map-note { display: none; }
+    }
   </style>
 </head>
-<body data-theme="neon">
-  <div id="map" aria-label="Interaktiv karta"></div>
-  <div class="topbar">
-    <div class="hud">
-      <div class="eyebrow">LEVEL 01 / PROTOTYP</div>
-      <h1>◈ SpelGPS</h1>
-      <div class="small">En riktig karta med spelkänsla</div>
+<body>
+  <div id="map" role="application" aria-label="Interaktiv svensk bilkarta med westerntema"></div>
+
+  <header class="topbar" aria-label="Frontier GPS">
+    <div class="brand">
+      <div class="seal" aria-hidden="true">✦</div>
+      <div>
+        <div class="brand-eyebrow">DEN NYA VÄRLDENS VÄGAR</div>
+        <h1>Frontier GPS</h1>
+        <div class="brand-sub">En vägvisare för moderna resenärer</div>
+      </div>
     </div>
-    <div class="theme-wrap">
-      <label for="theme">KARTTEMA</label>
-      <select id="theme" aria-label="Välj karttema">
-        <option value="neon">Neon</option>
-        <option value="retro">Retro</option>
-        <option value="tactical">Taktisk</option>
-      </select>
+    <div class="compass" aria-label="Kompassros, norr uppåt">
+      <span class="direction north">N</span>
+      <span class="direction south">S</span>
+      <span class="direction west">V</span>
+      <span class="direction east">Ö</span>
+      <span class="needle" aria-hidden="true"></span>
     </div>
-  </div>
-  <section class="panel" aria-label="GPS-kontroller">
-    <div class="line"><div class="label">NAVIGATION / ROUTE</div><span id="gpsBadge">GPS AV</span></div>
-    <p id="message" role="status" aria-live="polite">Tryck på ”Starta GPS” och tillåt platsåtkomst. Tryck sedan på en plats på kartan för att välja mål.</p>
-    <div class="stats">
-      <div class="stat"><span>STRÄCKA</span><strong id="distance">—</strong></div>
-      <div class="stat"><span>BERÄKNAD KÖRTID</span><strong id="duration">—</strong></div>
+  </header>
+
+  <div id="mapNote" class="map-note"><strong>✕ Markera ditt mål</strong> genom att trycka på en plats på kartan.</div>
+
+  <section class="panel" id="controls" aria-label="Navigering">
+    <div class="panel-head">
+      <div><div class="chapter">Kapitel I · Resans början</div><h2>Vägen till målet</h2></div>
+      <span id="gpsBadge" class="gps-state">GPS AV</span>
     </div>
-    <div class="buttons">
-      <button class="primary" id="gpsButton">◎ Starta GPS</button>
-      <button class="secondary" id="routeButton" disabled>↻ Räkna rutt</button>
+    <div class="flourish" aria-hidden="true">✦</div>
+    <p id="message" role="status" aria-live="polite">Starta GPS och välj sedan en destination på kartan, eller prova med en demoposition i Stockholm.</p>
+    <div class="stats" aria-label="Uppskattad körsträcka och tid">
+      <div class="stat"><span class="stat-label">RUTTENS LÄNGD</span><strong id="distance">—</strong></div>
+      <div class="stat"><span class="stat-label">BERÄKNAD KÖRTID</span><strong id="duration">—</strong></div>
     </div>
-    <div class="bottomline"><button class="textbutton" id="demoButton">Testa med demoposition i Stockholm</button><small>Testprototyp • Ej för säker bilnavigering</small></div>
+    <div class="actions">
+      <button id="gpsButton" class="action main" type="button">◎ Starta GPS</button>
+      <button id="routeButton" class="action second" type="button" disabled>✕ Beräkna rutt</button>
+    </div>
+    <div class="panel-foot">
+      <button id="demoButton" type="button" class="tiny-button">Prova demokarta ↗</button>
+      <span class="disclaimer">Rutt: OSRM demo<br>Ej för aktiv bilkörning</span>
+    </div>
   </section>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     'use strict';
-    // 1) Skapa kartan. Stockholm visas tills vi får en GPS-position.
-    const map = L.map('map', { zoomControl: false }).setView([59.3293, 18.0686], 15);
-    // Visa källan på kartan (krävs enligt OpenStreetMaps villkor).
-    map.attributionControl.setPosition('topright');
+    // Byt de här två siffrorna om du vill att kartan ska starta på en annan plats!
+    // Först latitud, sedan longitud. Det här är mitt i Sverige.
+    const START_POSITION = [62.1, 15.0];
+    const START_ZOOM = 5;
+
+    const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView(START_POSITION, START_ZOOM);
     map.attributionControl.setPrefix(false);
+    map.attributionControl.setPosition('bottomleft');
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      minZoom: 3, maxZoom: 19,
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-bidragsgivare'
+      minZoom: 3,
+      maxZoom: 19,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-bidragsgivare'
     }).addTo(map);
     L.control.zoom({ position: 'topright' }).addTo(map);
 
+    const panel = document.getElementById('controls');
     const message = document.getElementById('message');
     const badge = document.getElementById('gpsBadge');
     const gpsButton = document.getElementById('gpsButton');
@@ -136,33 +274,57 @@
     const demoButton = document.getElementById('demoButton');
     const distance = document.getElementById('distance');
     const duration = document.getElementById('duration');
+    const mapNote = document.getElementById('mapNote');
+
+    // Flytta kartkällan så att den alltid syns OVANFÖR nedersta panelen.
+    function keepAttributionVisible() {
+      document.documentElement.style.setProperty('--panel-height', panel.getBoundingClientRect().height + 'px');
+    }
+    keepAttributionVisible();
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(keepAttributionVisible).observe(panel);
+    window.addEventListener('resize', () => { keepAttributionVisible(); map.invalidateSize(); });
 
     let myPosition = null;
     let destination = null;
     let player = null;
     let accuracyCircle = null;
     let goalMarker = null;
+    let routeOutline = null;
     let routeLine = null;
     let watchId = null;
     let isDemo = false;
+    let followPosition = false;
     let requestId = 0;
 
-    document.getElementById('theme').addEventListener('change', (event) => {
-      document.body.dataset.theme = event.target.value;
+    const playerIcon = L.divIcon({
+      className: 'leaflet-div-icon',
+      html: '<div class="traveler-marker"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 19 21 12 16 5 21Z" fill="#f1cf8d" stroke="#282319" stroke-width="1.6" stroke-linejoin="round"/></svg></div>',
+      iconSize: [33, 33], iconAnchor: [16, 16]
+    });
+    const goalIcon = L.divIcon({
+      className: 'leaflet-div-icon',
+      html: '<div class="waypoint-marker">✕</div>',
+      iconSize: [30, 30], iconAnchor: [15, 15]
     });
 
-    // 2) Uppdatera kartan när telefonens GPS skickar en ny position.
-    function showPosition(lat, lon, accuracy) {
+    function showPosition(lat, lon, accuracy, heading) {
       myPosition = [lat, lon];
       if (!player) {
-        const icon = L.divIcon({ html: '<div class="player-arrow">▲</div>', iconSize: [31, 31], iconAnchor: [15, 15] });
-        player = L.marker(myPosition, { icon, zIndexOffset: 1000 }).addTo(map).bindPopup('Din position');
+        player = L.marker(myPosition, { icon: playerIcon, zIndexOffset: 1000 })
+          .addTo(map).bindPopup('Din position');
       } else {
         player.setLatLng(myPosition);
       }
-      if (Number.isFinite(accuracy)) {
+      if (Number.isFinite(heading)) {
+        const arrow = player.getElement()?.querySelector('.traveler-marker svg');
+        if (arrow) arrow.style.transform = `rotate(${heading}deg)`;
+      }
+      if (Number.isFinite(accuracy) && accuracy >= 0) {
         if (!accuracyCircle) {
-          accuracyCircle = L.circle(myPosition, {radius: accuracy, color: '#5cf6e5', weight: 1, fillOpacity: .07, interactive: false}).addTo(map);
+          accuracyCircle = L.circle(myPosition, {
+            radius: accuracy, color: '#3b5d60', weight: 1,
+            fillColor: '#658889', fillOpacity: .09, interactive: false
+          }).addTo(map);
         } else {
           accuracyCircle.setLatLng(myPosition).setRadius(accuracy);
         }
@@ -170,115 +332,146 @@
         map.removeLayer(accuracyCircle);
         accuracyCircle = null;
       }
-      badge.textContent = isDemo ? 'DEMOLÄGE' : `GPS ±${Math.round(accuracy || 0)} m`;
-      routeButton.disabled = destination === null;
+      badge.className = 'gps-state ' + (isDemo ? 'demo' : 'active');
+      badge.textContent = isDemo ? 'DEMOLÄGE' : `GPS ±${Math.round(accuracy || 0)} M`;
+      if (followPosition && !isDemo) map.panTo(myPosition, { animate: true, duration: .5 });
+      routeButton.disabled = !destination;
     }
 
     gpsButton.addEventListener('click', () => {
       if (!navigator.geolocation) {
-        message.textContent = 'Den här webbläsaren stöder inte GPS-positionering.';
+        message.textContent = 'Din webbläsare stöder inte GPS-positionering.';
         return;
       }
       if (!window.isSecureContext) {
-        message.textContent = 'GPS kräver en säker HTTPS-adress. Lägg upp filen på GitHub Pages först.';
+        message.textContent = 'GPS behöver en säker HTTPS-adress. Publicera sidan på GitHub Pages.';
         return;
       }
       if (watchId !== null) {
+        followPosition = true;
         if (myPosition) map.setView(myPosition, 16);
+        message.textContent = 'Följer din position. Flytta kartan med fingret för att pausa följningen.';
         return;
       }
-      message.textContent = 'Söker efter din GPS-position…';
-      gpsButton.textContent = '◎ Visa min position';
-      // watchPosition följer telefonens position så länge sidan är aktiv.
+      message.textContent = 'Söker din GPS-position…';
+      gpsButton.textContent = '◎ Följ min position';
+      followPosition = true;
       watchId = navigator.geolocation.watchPosition(
         ({coords}) => {
           const firstFix = myPosition === null || isDemo;
           isDemo = false;
-          showPosition(coords.latitude, coords.longitude, coords.accuracy);
+          showPosition(coords.latitude, coords.longitude, coords.accuracy, coords.heading);
           if (firstFix) {
             map.setView(myPosition, 16);
-            message.textContent = destination ? 'GPS aktiv. Uppdatera rutten med ”Räkna rutt”.' : 'GPS aktiv! Tryck på kartan där du vill köra.';
+            message.textContent = destination
+              ? 'GPS är aktiv. Tryck på ”Beräkna rutt” för att börja från din verkliga position.'
+              : 'GPS är aktiv! Markera din destination på kartan.';
           }
         },
         (error) => {
+          badge.className = 'gps-state';
           badge.textContent = 'GPS-FEL';
           message.textContent = error.code === 1
-            ? 'Platsåtkomst nekades. Tillåt platsåtkomst för sidan i webbläsarens inställningar.'
-            : 'Kan inte läsa GPS just nu. Försök igen utomhus med platsåtkomst aktiverad.';
+            ? 'Platsåtkomst nekades. Tillåt platsåtkomst i webbläsarens inställningar.'
+            : 'GPS kunde inte nås. Prova utomhus eller kontrollera platsinställningarna.';
           if (watchId !== null) navigator.geolocation.clearWatch(watchId);
           watchId = null;
+          followPosition = false;
           gpsButton.textContent = '◎ Starta GPS';
         },
         { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
       );
     });
 
-    // Demoläge: bra för att testa rutten från en dator, utan GPS.
     demoButton.addEventListener('click', () => {
-      if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-      }
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      followPosition = false;
       gpsButton.textContent = '◎ Starta GPS';
       isDemo = true;
-      showPosition(59.3275, 18.0540, null); // Stockholm, exempelposition
+      ++requestId;
+      clearRoute();
+      showPosition(59.3275, 18.0540, null, null);
       map.setView(myPosition, 14);
-      message.textContent = 'Demoläge! Tryck på en plats på kartan för att se en bilrutt från exempelpositionen.';
+      message.textContent = 'Demoläge i Stockholm. Tryck på kartan där du vill åka för att visa en körväg.';
     });
 
-    // 3) Välj destination genom att klicka/trycka på kartan.
+    map.on('dragstart', () => { followPosition = false; });
+
+    function clearRoute() {
+      if (routeLine) map.removeLayer(routeLine);
+      if (routeOutline) map.removeLayer(routeOutline);
+      routeLine = null;
+      routeOutline = null;
+      distance.textContent = '—';
+      duration.textContent = '—';
+    }
+
+    // Välj mål med ett tryck på kartan, i Sverige eller varhelst du befinner dig.
     map.on('click', (event) => {
       destination = event.latlng;
+      ++requestId; // Stoppar äldre förfrågningar från att skriva över den nya rutten.
+      clearRoute();
       if (!goalMarker) {
-        const icon = L.divIcon({ html: '<div class="goal-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
-        goalMarker = L.marker(destination, { icon }).addTo(map).bindPopup('Ditt mål');
+        goalMarker = L.marker(destination, { icon: goalIcon }).addTo(map).bindPopup('Din målplats');
       } else {
         goalMarker.setLatLng(destination);
       }
+      mapNote.innerHTML = '<strong>✦ Mål markerat.</strong> En röd väg visar rutten när den beräknats.';
+      routeButton.disabled = !myPosition;
       if (!myPosition) {
-        message.textContent = 'Målet är markerat. Starta GPS eller välj demoläge för att få en bilrutt.';
-        return;
+        message.textContent = 'Din destination är markerad. Starta GPS eller välj demoläge för att beräkna rutten.';
+      } else {
+        calculateRoute();
       }
-      calculateRoute();
     });
 
-    // 4) Be OSRM om en bilrutt mellan GPS och den valda platsen.
+    // OSRM:s öppna demoserver räknar vägval. Den får INTE användas som
+    // produktionslösning, och kartan har varken röst- eller trafiknavigering.
     async function calculateRoute() {
       if (!myPosition || !destination) return;
       const id = ++requestId;
-      const start = `${myPosition[1]},${myPosition[0]}`; // OSRM vill ha longitud,latitud
+      const start = `${myPosition[1]},${myPosition[0]}`;
       const end = `${destination.lng},${destination.lat}`;
       const url = `https://router.project-osrm.org/route/v1/driving/${start};${end}?overview=full&geometries=geojson`;
       routeButton.disabled = true;
-      message.textContent = 'Räknar ut en körväg…';
+      message.textContent = 'Söker en körbar väg till ditt mål…';
       try {
         const response = await fetch(url);
-        if (!response.ok) throw new Error('Svar från ruttjänsten saknas');
+        if (!response.ok) throw new Error('rutttjänsten svarade inte');
         const data = await response.json();
         if (id !== requestId) return;
-        if (data.code !== 'Ok' || !data.routes?.length) throw new Error('Ingen bilväg hittades');
+        if (data.code !== 'Ok' || !data.routes?.length) throw new Error('ingen körbar väg hittades');
         const route = data.routes[0];
-        const coordinates = route.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
-        if (routeLine) map.removeLayer(routeLine);
-        routeLine = L.polyline(coordinates, { color: getComputedStyle(document.body).getPropertyValue('--accent').trim(), weight: 6, opacity: .9 }).addTo(map);
+        if (!route.geometry?.coordinates?.length) throw new Error('rutten saknar vägdata');
+        const latLngs = route.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+        clearRoute();
+        routeOutline = L.polyline(latLngs, {
+          color: '#39271c', weight: 10, opacity: .74,
+          lineJoin: 'round', lineCap: 'round', interactive: false
+        }).addTo(map);
+        routeLine = L.polyline(latLngs, {
+          color: '#a02f26', weight: 5, opacity: 1,
+          lineJoin: 'round', lineCap: 'round', interactive: false
+        }).addTo(map);
         const km = route.distance / 1000;
         distance.textContent = km < 10 ? `${km.toFixed(1).replace('.', ',')} km` : `${Math.round(km)} km`;
         const minutes = Math.max(1, Math.round(route.duration / 60));
-        duration.textContent = minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} m`;
-        message.textContent = 'Rutten visas! Din position uppdateras med GPS, men rutten räknas om först när du trycker ”Räkna rutt”.';
-        map.fitBounds(routeLine.getBounds(), {paddingTopLeft: [35, 150], paddingBottomRight: [35, 295], maxZoom: 16});
-      } catch (error) {
+        duration.textContent = minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+        message.textContent = 'Den röda vägen är din rutt! GPS-pilen följer dig, men rutten räknas om manuellt.';
+        map.fitBounds(routeLine.getBounds(), {
+          paddingTopLeft: [30, 120],
+          paddingBottomRight: [30, Math.min(window.innerHeight * .5, panel.getBoundingClientRect().height + 44)],
+          maxZoom: 16
+        });
+      } catch (err) {
         if (id !== requestId) return;
-        message.textContent = `Kunde inte räkna rutten (${error.message}). Försök igen eller välj en annan plats.`;
+        message.textContent = `Kunde inte räkna rutten (${err.message}). Välj en annan plats eller försök senare.`;
       } finally {
         if (id === requestId) routeButton.disabled = false;
       }
     }
     routeButton.addEventListener('click', calculateRoute);
-    // Håll ruttfärgen i synk när man byter tema.
-    document.getElementById('theme').addEventListener('change', () => {
-      if (routeLine) routeLine.setStyle({color: getComputedStyle(document.body).getPropertyValue('--accent').trim()});
-    });
   </script>
 </body>
 </html>

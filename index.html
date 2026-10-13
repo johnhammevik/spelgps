@@ -280,7 +280,9 @@ camera(false);
 
 if (!demo) {
   checkForDetour(accuracy);
+  }
 }
+
 function clearGps(){gpsSession++;if(gpsWatch!==null&&navigator.geolocation)navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;els.stopBtn.style.display='none';els.gpsBtn.textContent='◎ Starta GPS';}
 function stopDemo(){if(demoTimer!==null)clearInterval(demoTimer);demoTimer=null;els.demoBtn.textContent='▶ Testkör';}
 function removeLivePosition(){current=null;previous=null;hasHeading=false;heading=0;following=false;hasFix=false;followUI();els.gpsState.textContent='GPS AV';els.speed.textContent='—';els.accuracy.textContent='—';if(marker){marker.remove();marker=null;}if(miniMarker){miniMarker.remove();miniMarker=null;}els.routeBtn.disabled=true;}
